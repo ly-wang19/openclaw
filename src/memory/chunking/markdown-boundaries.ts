@@ -18,7 +18,7 @@ export function isHeading(line: string): boolean {
  */
 export function isCodeBlockFence(line: string): boolean {
   const trimmed = line.trim();
-  return /^```/.test(trimmed);
+  return /^```|^~~~/.test(trimmed);
 }
 
 /**
@@ -71,7 +71,7 @@ export function isStructuralBoundary(line: string): boolean {
  *
  * @param line - The line to split
  * @param maxLength - Maximum length for the split
- * @returns Index to split at, or -1 if no good split found
+ * @returns Index to split at (always a valid index between 0 and maxLength inclusive)
  */
 export function findSafeSplitPoint(line: string, maxLength: number): number {
   if (line.length <= maxLength) {
@@ -89,15 +89,11 @@ export function findSafeSplitPoint(line: string, maxLength: number): number {
   }
 
   // Priority 2: Common punctuation that can end a segment
-  const punctuation = [".", ",", ";", ":", "!", "?", ")", "]", "}"];
-  for (const punct of punctuation) {
-    for (let i = searchEnd; i > 0; i--) {
-      if (line[i - 1] === punct) {
-        // Make sure it's not part of something like "..." or "::"
-        if (i < line.length && line[i] !== punct) {
-          return i;
-        }
-      }
+  // Single pass to find the rightmost punctuation of any type
+  const punctSet = new Set([".", ",", ";", ":", "!", "?", ")", "]", "}"]);
+  for (let i = searchEnd; i > 0; i--) {
+    if (punctSet.has(line[i - 1]) && i < line.length && line[i] !== line[i - 1]) {
+      return i;
     }
   }
 
@@ -170,4 +166,119 @@ export function getLineRole(line: string): LineRole {
   if (isBlockquote(line)) return "blockquote";
   if (isThematicBreak(line)) return "thematic_break";
   return "content";
+}
+
+/**
+ * Get the heading level (1-6) from a heading line.
+ * Returns 0 if the line is not a heading.
+ */
+export function getHeadingLevel(line: string): number {
+  const trimmed = line.trimStart();
+  const match = trimmed.match(/^#{1,6}\s/);
+  if (match) {
+    return match[0].trim().length;
+  }
+  return 0;
+}
+
+/**
+ * Calculate UTF-8 byte size of a string.
+ */
+function estimateUtf8Bytes(text: string): number {
+  if (!text) {
+    return 0;
+  }
+  return Buffer.byteLength(text, "utf8");
+}
+
+/**
+ * Split a long line at safe points, respecting UTF-8 byte limits.
+ *
+ * This function is byte-aware and correctly handles multi-byte characters
+ * (CJK, emoji, etc.) that would otherwise exceed byte limits when using
+ * character-based splitting.
+ *
+ * @param line - The line to split
+ * @param maxBytes - Maximum UTF-8 bytes per segment
+ * @returns Array of line segments
+ */
+export function splitLongLineByBytes(line: string, maxBytes: number): string[] {
+  const totalBytes = estimateUtf8Bytes(line);
+  if (totalBytes <= maxBytes) {
+    return [line];
+  }
+
+  const segments: string[] = [];
+  let remaining = line;
+
+  while (remaining.length > 0) {
+    const remainingBytes = estimateUtf8Bytes(remaining);
+    if (remainingBytes <= maxBytes) {
+      segments.push(remaining);
+      break;
+    }
+
+    // Find the longest substring that fits within maxBytes
+    // UTF-16 code units are always <= UTF-8 bytes, so we can use character count
+    // as an upper bound for the binary search
+    let high = Math.min(remaining.length, maxBytes);
+    let low = 0;
+    let bestEnd = 0;
+
+    // Binary search for the split point
+    while (low <= high) {
+      const mid = Math.floor((low + high) / 2);
+      const candidate = remaining.slice(0, mid);
+      const bytes = estimateUtf8Bytes(candidate);
+
+      if (bytes <= maxBytes) {
+        bestEnd = mid;
+        low = mid + 1;
+      } else {
+        high = mid - 1;
+      }
+    }
+
+    // Now try to find a better split point within the safe range
+    // Look for natural boundaries before bestEnd
+    const searchEnd = Math.min(bestEnd, remaining.length);
+    let splitPoint = bestEnd;
+
+    // Priority 1: Space followed by non-space (word boundary)
+    for (let i = searchEnd; i > 0; i--) {
+      const testSegment = remaining.slice(0, i);
+      if (estimateUtf8Bytes(testSegment) > maxBytes) {
+        break;
+      }
+      if (remaining[i - 1] === " " && remaining[i] !== " ") {
+        splitPoint = i - 1;
+        break;
+      }
+    }
+
+    // Priority 2: Common punctuation (only if space search didn't find a boundary)
+    if (splitPoint === bestEnd) {
+      const punctSet = new Set([".", ",", ";", ":", "!", "?", ")", "]", "}"]);
+      for (let i = searchEnd; i > 0; i--) {
+        const testSegment = remaining.slice(0, i);
+        if (estimateUtf8Bytes(testSegment) > maxBytes) {
+          break;
+        }
+        if (punctSet.has(remaining[i - 1]) && i < remaining.length && remaining[i] !== remaining[i - 1]) {
+          splitPoint = i;
+          break;
+        }
+      }
+    }
+
+    if (splitPoint <= 0) {
+      // Can't find a good split, force at bestEnd
+      splitPoint = Math.max(1, bestEnd);
+    }
+
+    segments.push(remaining.slice(0, splitPoint).trimEnd());
+    remaining = remaining.slice(splitPoint).trimStart();
+  }
+
+  return segments;
 }
