@@ -62,6 +62,11 @@ export interface ChunkStrategy {
 }
 
 /**
+ * Available chunking strategies.
+ */
+export type ChunkingStrategyType = "simple" | "semantic";
+
+/**
  * Default chunking configuration.
  */
 export const DEFAULT_CHUNKING_CONFIG: ChunkingConfig = {

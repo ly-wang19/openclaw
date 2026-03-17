@@ -18,4 +18,5 @@
 // Re-export for convenience
 export * from "./chunk-strategy.js";
 export * from "./simple-chunker.js";
+export * from "./semantic-chunker.js";
 export * from "./markdown-boundaries.js";

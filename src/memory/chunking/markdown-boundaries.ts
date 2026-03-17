@@ -171,3 +171,239 @@ export function getLineRole(line: string): LineRole {
   if (isThematicBreak(line)) return "thematic_break";
   return "content";
 }
+
+/**
+ * Split point priority for semantic chunking.
+ * Lower number = higher priority (better place to split).
+ */
+export enum SplitPriority {
+  // Best split points - won't break any semantic structure
+  Heading = 1,
+  ThematicBreak = 1,
+  ParagraphBreak = 2, // Empty line between paragraphs
+
+  // Good split points - minor structural boundaries
+  List = 3,
+  Blockquote = 3,
+
+  // Acceptable split points - within content but at sentence boundaries
+  SentenceEnd = 4,
+  ClauseEnd = 5,
+
+  // Last resort - will break semantics
+  MidContent = 6,
+  CodeBlock = 7, // Avoid splitting code blocks if possible
+}
+
+/**
+ * Analyze a line and its context to determine split priority.
+ *
+ * @param line - The line to analyze
+ * @param prevLine - The previous line (for context)
+ * @param inCodeBlock - Whether we're currently inside a code block
+ * @returns The split priority at this position
+ */
+export function getSplitPriority(
+  line: string,
+  prevLine: string,
+  inCodeBlock: boolean,
+): SplitPriority {
+  // Never split inside code blocks
+  if (inCodeBlock) {
+    return SplitPriority.CodeBlock;
+  }
+
+  // Best: before headings
+  if (isHeading(line)) {
+    return SplitPriority.Heading;
+  }
+
+  // Best: after headings (prev was heading, current is content or empty)
+  if (isHeading(prevLine)) {
+    return SplitPriority.Heading;
+  }
+
+  // Best: thematic breaks
+  if (isThematicBreak(line)) {
+    return SplitPriority.ThematicBreak;
+  }
+
+  // Very good: paragraph breaks (empty line surrounded by content)
+  if (isEmptyLine(line) && prevLine.trim().length > 0) {
+    return SplitPriority.ParagraphBreak;
+  }
+
+  // Good: list items (but prefer to keep list items together)
+  if (isListItem(line)) {
+    return SplitPriority.List;
+  }
+
+  // Good: blockquotes
+  if (isBlockquote(line)) {
+    return SplitPriority.Blockquote;
+  }
+
+  // Good: sentence endings
+  if (prevLine.trim().length > 0 && /[.!?]\s*$/.test(prevLine.trim())) {
+    return SplitPriority.SentenceEnd;
+  }
+
+  // Acceptable: clause endings (commas, semicolons, colons)
+  if (prevLine.trim().length > 0 && /[;,:]\s*$/.test(prevLine.trim())) {
+    return SplitPriority.ClauseEnd;
+  }
+
+  // Last resort: mid-content
+  return SplitPriority.MidContent;
+}
+
+/**
+ * Find all potential split points in a document with their priorities.
+ *
+ * @param lines - Array of lines to analyze
+ * @returns Array of split points with line index and priority
+ */
+export function findSplitPoints(lines: string[]): Array<{
+  lineIndex: number;
+  priority: SplitPriority;
+  reason: string;
+}> {
+  const splitPoints: Array<{ lineIndex: number; priority: SplitPriority; reason: string }> = [];
+  let inCodeBlock = false;
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i] ?? "";
+    const prevLine = i > 0 ? (lines[i - 1] ?? "") : "";
+
+    // Track code block state
+    if (isCodeBlockFence(line)) {
+      inCodeBlock = !inCodeBlock;
+      // Code fence boundaries are also good split points
+      splitPoints.push({
+        lineIndex: i,
+        priority: SplitPriority.ParagraphBreak,
+        reason: "code fence boundary",
+      });
+      continue;
+    }
+
+    const priority = getSplitPriority(line, prevLine, inCodeBlock);
+    if (priority < SplitPriority.MidContent) {
+      let reason = "unknown";
+      switch (priority) {
+        case SplitPriority.Heading:
+          reason = "heading boundary";
+          break;
+        case SplitPriority.ThematicBreak:
+          reason = "thematic break";
+          break;
+        case SplitPriority.ParagraphBreak:
+          reason = "paragraph break";
+          break;
+        case SplitPriority.List:
+          reason = "list item";
+          break;
+        case SplitPriority.Blockquote:
+          reason = "blockquote";
+          break;
+        case SplitPriority.SentenceEnd:
+          reason = "sentence end";
+          break;
+        case SplitPriority.ClauseEnd:
+          reason = "clause end";
+          break;
+      }
+      splitPoints.push({ lineIndex: i, priority, reason });
+    }
+  }
+
+  return splitPoints;
+}
+
+/**
+ * Check if two consecutive lines form a paragraph boundary.
+ * A paragraph boundary is an empty line between non-empty content.
+ */
+export function isParagraphBoundary(line: string, prevLine: string): boolean {
+  return isEmptyLine(line) && !isEmptyLine(prevLine);
+}
+
+/**
+ * Get the heading level (1-6) from a heading line.
+ * Returns 0 if the line is not a heading.
+ */
+export function getHeadingLevel(line: string): number {
+  const match = line.match(/^#{1,6}\s/);
+  if (match) {
+    return match[0].trim().length;
+  }
+  return 0;
+}
+
+/**
+ * Check if a line is inside a code block.
+ * Requires tracking code block state separately.
+ */
+export function isInsideCodeBlock(
+  lineIndex: number,
+  codeBlockFences: Array<{ start: number; end: number }>,
+): boolean {
+  for (const block of codeBlockFences) {
+    if (lineIndex > block.start && lineIndex < block.end) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Find all code block ranges in a document.
+ * Returns array of { start, end } line indices (inclusive).
+ */
+export function findCodeBlocks(lines: string[]): Array<{ start: number; end: number }> {
+  const blocks: Array<{ start: number; end: number }> = [];
+  let start = -1;
+
+  for (let i = 0; i < lines.length; i += 1) {
+    if (isCodeBlockFence(lines[i] ?? "")) {
+      if (start === -1) {
+        start = i;
+      } else {
+        blocks.push({ start, end: i });
+        start = -1;
+      }
+    }
+  }
+
+  return blocks;
+}
+
+/**
+ * Check if a split point would break a structural element.
+ * Returns true if splitting at this point would break something important.
+ */
+export function wouldBreakStructure(
+  lineIndex: number,
+  lines: string[],
+  codeBlocks: Array<{ start: number; end: number }>,
+): boolean {
+  // Don't split inside code blocks
+  if (isInsideCodeBlock(lineIndex, codeBlocks)) {
+    return true;
+  }
+
+  const line = lines[lineIndex] ?? "";
+  const prevLine = lineIndex > 0 ? (lines[lineIndex - 1] ?? "") : "";
+
+  // Don't split right after a heading (keep heading with its content)
+  if (isHeading(prevLine) && !isEmptyLine(line)) {
+    return true;
+  }
+
+  // Don't split in the middle of a list (keep list items together)
+  if (isListItem(prevLine) && isListItem(line)) {
+    return true;
+  }
+
+  return false;
+}
