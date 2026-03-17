@@ -11,7 +11,7 @@
 import { estimateUtf8Bytes } from "../embedding-input-limits.js";
 import { hashText, type MemoryChunk } from "../internal.js";
 import type { ChunkStrategy, ChunkingConfig } from "./chunk-strategy.js";
-import { splitLongLine } from "./markdown-boundaries.js";
+import { splitLongLineByBytes } from "./markdown-boundaries.js";
 import { buildTextEmbeddingInput } from "../embedding-inputs.js";
 
 /**
@@ -30,6 +30,9 @@ export class SimpleChunker implements ChunkStrategy {
   readonly name = "simple";
 
   chunk(content: string, config: ChunkingConfig): MemoryChunk[] {
+    // Note: config.preserveStructure is reserved for future Phase 2+ features.
+    // The SimpleChunker handles basic UTF-8 byte-aware chunking; use
+    // SemanticChunker for structure-aware splitting.
     const lines = content.split("\n");
     // Handle empty content - split("\n") on empty string returns [""]
     if (lines.length === 0 || (lines.length === 1 && lines[0] === "")) {
@@ -119,9 +122,9 @@ export class SimpleChunker implements ChunkStrategy {
       return [entry];
     }
 
-    // Split the long line at natural boundaries
+    // Split the long line at natural boundaries, respecting UTF-8 byte limits
     const maxTextBytes = maxBytes - 1; // Account for newline
-    const textSegments = splitLongLine(entry.line, maxTextBytes);
+    const textSegments = splitLongLineByBytes(entry.line, maxTextBytes);
 
     return textSegments.map((segment) => ({
       line: segment,

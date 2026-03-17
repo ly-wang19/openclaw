@@ -14,23 +14,10 @@ import type { ChunkStrategy, ChunkingConfig } from "./chunk-strategy.js";
 import {
   findSplitPoints,
   findCodeBlocks,
-  wouldBreakStructure,
   isInsideCodeBlock,
-  getSplitPriority,
-  type LineRole,
-  getLineRole,
-  splitLongLine,
+  splitLongLineByBytes,
 } from "./markdown-boundaries.js";
 import { buildTextEmbeddingInput } from "../embedding-inputs.js";
-
-/**
- * A potential chunk boundary with metadata.
- */
-type ChunkBoundary = {
-  lineIndex: number;
-  priority: number;
-  cumulativeBytes: number;
-};
 
 /**
  * Semantic chunker implementation.
@@ -74,32 +61,6 @@ export class SemanticChunker implements ChunkStrategy {
     codeBlocks: Array<{ start: number; end: number }>,
     maxBytes: number,
   ): number[] {
-    // Store lineBytes for use in findBestSplitPoint
-    this.lineBytes = () => lineBytes;
-
-    try {
-      return this.findOptimalBoundariesImpl(
-        lines,
-        lineBytes,
-        splitPoints,
-        codeBlocks,
-        maxBytes,
-      );
-    } finally {
-      this.lineBytes = undefined;
-    }
-  }
-
-  /**
-   * Internal implementation of findOptimalBoundaries.
-   */
-  private findOptimalBoundariesImpl(
-    lines: string[],
-    lineBytes: number[],
-    splitPoints: Array<{ lineIndex: number; priority: number; reason: string }>,
-    codeBlocks: Array<{ start: number; end: number }>,
-    maxBytes: number,
-  ): number[] {
     const boundaries: number[] = [0]; // Always start at line 0
     let currentBytes = 0;
     let lastBoundary = 0;
@@ -135,7 +96,8 @@ export class SemanticChunker implements ChunkStrategy {
 
         if (bestSplit > lastBoundary) {
           boundaries.push(bestSplit);
-          currentBytes = this.calculateBytesFrom(bestSplit, i, lineBytes);
+          // Use i + 1 to include the current line in the new chunk's byte count
+          currentBytes = this.calculateBytesFrom(bestSplit, i + 1, lineBytes);
           lastBoundary = bestSplit;
         }
       }
@@ -155,7 +117,7 @@ export class SemanticChunker implements ChunkStrategy {
   private findBestSplitPoint(
     start: number,
     end: number,
-    currentBytes: number,
+    _currentBytes: number,
     maxBytes: number,
     priorityMap: Map<number, number>,
     codeBlocks: Array<{ start: number; end: number }>,
@@ -163,7 +125,6 @@ export class SemanticChunker implements ChunkStrategy {
   ): number {
     let bestSplit = end;
     let bestPriority = Infinity;
-    let bestBytesOver = currentBytes - maxBytes;
 
     // Search for a split point that minimizes both priority deviation and size overflow
     for (let i = end; i > start + 1; i -= 1) {
@@ -186,7 +147,6 @@ export class SemanticChunker implements ChunkStrategy {
       if (priority < bestPriority || (isGoodFit && priority <= bestPriority)) {
         bestSplit = i;
         bestPriority = priority;
-        bestBytesOver = bytesUnder;
 
         // Perfect match found
         if (priority <= 2 && bytesUnder >= 0) {
@@ -295,8 +255,8 @@ export class SemanticChunker implements ChunkStrategy {
 
       // Check if a single line is too long
       if (lineBytes > maxBytes) {
-        // Split the long line
-        const segments = splitLongLine(line, maxBytes - 1);
+        // Split the long line using byte-aware splitting
+        const segments = splitLongLineByBytes(line, maxBytes - 1);
         for (const segment of segments) {
           chunks.push({
             startLine: baseLineNo + 1,
