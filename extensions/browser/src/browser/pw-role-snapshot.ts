@@ -36,11 +36,18 @@ export type RoleSnapshotOptions = {
 
 /** Compute snapshot line/char/ref statistics. */
 export function getRoleSnapshotStats(snapshot: string, refs: RoleRefMap): RoleSnapshotStats {
-  const interactive = Object.values(refs).filter((r) => INTERACTIVE_ROLES.has(r.role)).length;
+  let refCount = 0;
+  let interactive = 0;
+  for (const ref of Object.values(refs)) {
+    refCount += 1;
+    if (INTERACTIVE_ROLES.has(ref.role)) {
+      interactive += 1;
+    }
+  }
   return {
     lines: snapshot.split("\n").length,
     chars: snapshot.length,
-    refs: Object.keys(refs).length,
+    refs: refCount,
     interactive,
   };
 }

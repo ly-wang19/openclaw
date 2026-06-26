@@ -59,8 +59,11 @@ describe("pw-role-snapshot", () => {
   it("computes stats", () => {
     const aria = ['- button "OK"', '- button "Cancel"'].join("\n");
     const res = buildRoleSnapshotFromAriaSnapshot(aria);
-    const stats = getRoleSnapshotStats(res.snapshot, res.refs);
-    expect(stats.refs).toBe(2);
+    const stats = getRoleSnapshotStats(res.snapshot, {
+      ...res.refs,
+      e3: { role: "heading", name: "Title" },
+    });
+    expect(stats.refs).toBe(3);
     expect(stats.interactive).toBe(2);
     expect(stats.lines).toBeGreaterThan(0);
     expect(stats.chars).toBeGreaterThan(0);
