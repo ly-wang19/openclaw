@@ -2038,20 +2038,25 @@ export async function updatePluginsAfterCoreUpdate(params: {
     defaultRuntime.log(theme.warn(createPostUpdatePluginWarning({ reason: error }).message));
   }
 
-  const updated = pluginUpdateOutcomes.filter((entry) => entry.status === "updated").length;
-  const unchanged = pluginUpdateOutcomes.filter((entry) => entry.status === "unchanged").length;
-  const failed = pluginUpdateOutcomes.filter((entry) => entry.status === "error").length;
-  const skipped = pluginUpdateOutcomes.filter((entry) => entry.status === "skipped").length;
+  const outcomeCounts = {
+    updated: 0,
+    unchanged: 0,
+    error: 0,
+    skipped: 0,
+  } satisfies Record<PluginUpdateOutcome["status"], number>;
+  for (const outcome of pluginUpdateOutcomes) {
+    outcomeCounts[outcome.status] += 1;
+  }
 
   if (pluginUpdateOutcomes.length === 0) {
     defaultRuntime.log(theme.muted("No plugin updates needed."));
   } else {
-    const parts = [`${updated} updated`, `${unchanged} unchanged`];
-    if (failed > 0) {
-      parts.push(`${failed} failed`);
+    const parts = [`${outcomeCounts.updated} updated`, `${outcomeCounts.unchanged} unchanged`];
+    if (outcomeCounts.error > 0) {
+      parts.push(`${outcomeCounts.error} failed`);
     }
-    if (skipped > 0) {
-      parts.push(`${skipped} skipped`);
+    if (outcomeCounts.skipped > 0) {
+      parts.push(`${outcomeCounts.skipped} skipped`);
     }
     defaultRuntime.log(theme.muted(`npm plugins: ${parts.join(", ")}.`));
   }
