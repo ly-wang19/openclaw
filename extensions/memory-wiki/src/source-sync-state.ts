@@ -129,9 +129,12 @@ export function assertMemoryWikiSourceSyncStateCapacity(params: {
   group: MemoryWikiImportedSourceGroup;
   incomingCount: number;
 }): void {
-  const retainedOtherGroupCount = Object.values(params.state.entries).filter(
-    (entry) => entry.group !== params.group,
-  ).length;
+  let retainedOtherGroupCount = 0;
+  for (const entry of Object.values(params.state.entries)) {
+    if (entry.group !== params.group) {
+      retainedOtherGroupCount += 1;
+    }
+  }
   const projectedCount = retainedOtherGroupCount + params.incomingCount;
   if (projectedCount > MEMORY_WIKI_SOURCE_SYNC_STATE_MAX_ENTRIES) {
     throw new Error(
