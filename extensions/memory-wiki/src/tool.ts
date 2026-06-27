@@ -202,14 +202,19 @@ export function createWikiLintTool(
       const contradictions = result.issuesByCategory.contradictions.length;
       const openQuestions = result.issuesByCategory["open-questions"].length;
       const provenance = result.issuesByCategory.provenance.length;
-      const errors = result.issues.filter((issue) => issue.severity === "error").length;
-      const warnings = result.issues.filter((issue) => issue.severity === "warning").length;
+      const severityCounts = result.issues.reduce(
+        (counts, issue) => {
+          counts[issue.severity] += 1;
+          return counts;
+        },
+        { error: 0, warning: 0 },
+      );
       const reportPath = formatWikiToolReportPath(config, result.reportPath);
       const summary =
         result.issueCount === 0
           ? "No wiki lint issues."
           : [
-              `Issues: ${result.issueCount} total (${errors} errors, ${warnings} warnings)`,
+              `Issues: ${result.issueCount} total (${severityCounts.error} errors, ${severityCounts.warning} warnings)`,
               `Contradictions: ${contradictions}`,
               `Open questions: ${openQuestions}`,
               `Provenance gaps: ${provenance}`,
