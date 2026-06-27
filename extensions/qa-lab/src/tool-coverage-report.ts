@@ -270,21 +270,51 @@ export function buildQaToolCoverageReport(params: {
   const failures = evaluated
     ? rows.map(coverageFailureForRow).filter((failure): failure is string => Boolean(failure))
     : [];
+  const rowCounts = rows.reduce(
+    (counts, row) => {
+      if (row.required) {
+        counts.requiredTools += 1;
+      }
+      if (!row.required || row.tracking) {
+        counts.reportOnlyTools += 1;
+      }
+      if (row.tracking) {
+        counts.trackedTools += 1;
+      }
+      if (row.bucket === "codex-native-workspace") {
+        counts.nativeWorkspaceTools += 1;
+      } else if (row.bucket === "openclaw-dynamic-integration") {
+        counts.dynamicIntegrationTools += 1;
+      } else if (row.bucket === "optional-profile-or-plugin") {
+        counts.optionalTools += 1;
+      }
+      if (row.capabilityLayer === "openclaw-dynamic-searchable") {
+        counts.searchableDynamicTools += 1;
+      }
+      return counts;
+    },
+    {
+      requiredTools: 0,
+      reportOnlyTools: 0,
+      trackedTools: 0,
+      nativeWorkspaceTools: 0,
+      dynamicIntegrationTools: 0,
+      searchableDynamicTools: 0,
+      optionalTools: 0,
+    },
+  );
   return {
     runtimePair: normalizeRuntimePair(params.runtimePair ?? params.summary?.run?.runtimePair),
     generatedAt: params.generatedAt ?? new Date().toISOString(),
     evaluated,
     totalTools: rows.length,
-    requiredTools: rows.filter((row) => row.required).length,
-    reportOnlyTools: rows.filter((row) => !row.required || Boolean(row.tracking)).length,
-    trackedTools: rows.filter((row) => Boolean(row.tracking)).length,
-    nativeWorkspaceTools: rows.filter((row) => row.bucket === "codex-native-workspace").length,
-    dynamicIntegrationTools: rows.filter((row) => row.bucket === "openclaw-dynamic-integration")
-      .length,
-    searchableDynamicTools: rows.filter(
-      (row) => row.capabilityLayer === "openclaw-dynamic-searchable",
-    ).length,
-    optionalTools: rows.filter((row) => row.bucket === "optional-profile-or-plugin").length,
+    requiredTools: rowCounts.requiredTools,
+    reportOnlyTools: rowCounts.reportOnlyTools,
+    trackedTools: rowCounts.trackedTools,
+    nativeWorkspaceTools: rowCounts.nativeWorkspaceTools,
+    dynamicIntegrationTools: rowCounts.dynamicIntegrationTools,
+    searchableDynamicTools: rowCounts.searchableDynamicTools,
+    optionalTools: rowCounts.optionalTools,
     passingTools: evaluated
       ? rows.filter(
           (row) =>
