@@ -326,11 +326,19 @@ export async function listMemoryWikiImportInsights(
         ? "withheld"
         : "available";
       const exposeImportContent = shouldExposeImportContent(digestStatus);
-      const userTurns = transcriptTurns.filter((turn) => turn.role === "user");
-      const assistantTurns = transcriptTurns.filter((turn) => turn.role === "assistant");
-      const assistantOpener = exposeImportContent
-        ? firstParagraph(assistantTurns[0]?.text ?? "")
-        : undefined;
+      let userTurnCount = 0;
+      let assistantTurnCount = 0;
+      let assistantOpener: string | undefined;
+      for (const turn of transcriptTurns) {
+        if (turn.role === "user") {
+          userTurnCount += 1;
+          continue;
+        }
+        assistantTurnCount += 1;
+        if (exposeImportContent && assistantOpener === undefined) {
+          assistantOpener = firstParagraph(turn.text);
+        }
+      }
       const correctionSignals = exposeImportContent
         ? extractCorrectionSignals(transcriptTurns)
         : [];
@@ -360,11 +368,11 @@ export async function listMemoryWikiImportInsights(
           activeBranchMessages: extractIntegerField(triageLines, "Active-branch messages"),
           userMessageCount: Math.max(
             extractIntegerField(digestLines, "User messages"),
-            userTurns.length,
+            userTurnCount,
           ),
           assistantMessageCount: Math.max(
             extractIntegerField(digestLines, "Assistant messages"),
-            assistantTurns.length,
+            assistantTurnCount,
           ),
           ...(firstUserLine ? { firstUserLine } : {}),
           ...(lastUserLine ? { lastUserLine } : {}),
