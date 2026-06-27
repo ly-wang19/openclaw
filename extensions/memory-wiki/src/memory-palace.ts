@@ -104,61 +104,94 @@ export async function listMemoryWikiPalace(
   config: ResolvedMemoryWikiConfig,
 ): Promise<MemoryWikiPalaceStatus> {
   const pages = await readQueryableWikiPages(config.vault.path);
-  const pageCounts = pages.reduce<MemoryWikiPalacePageCounts>((counts, page) => {
-    counts[page.kind] += 1;
-    return counts;
-  }, createEmptyPalacePageCounts());
-  const totalClaims = pages.reduce((sum, page) => sum + page.claims.length, 0);
-  const totalQuestions = pages.reduce((sum, page) => sum + page.questions.length, 0);
-  const totalContradictions = pages.reduce((sum, page) => sum + page.contradictions.length, 0);
-  const items = pages
-    .map((page) => {
-      const parsed = parseWikiMarkdown(page.raw);
-      return Object.assign(
+  const pageCounts = createEmptyPalacePageCounts();
+  let totalClaims = 0;
+  let totalQuestions = 0;
+  let totalContradictions = 0;
+  const items: MemoryWikiPalaceItem[] = [];
+
+  for (const page of pages) {
+    pageCounts[page.kind] += 1;
+    totalClaims += page.claims.length;
+    totalQuestions += page.questions.length;
+    totalContradictions += page.contradictions.length;
+
+    const claimCount = page.claims.length;
+    const questionCount = page.questions.length;
+    const contradictionCount = page.contradictions.length;
+    if (
+      !PRIMARY_PALACE_KINDS.has(page.kind) &&
+      claimCount === 0 &&
+      questionCount === 0 &&
+      contradictionCount === 0
+    ) {
+      continue;
+    }
+
+    const parsed = parseWikiMarkdown(page.raw);
+    const updatedAt = normalizeTimestamp(page.updatedAt);
+    const sourceType = typeof page.sourceType === `string` ? page.sourceType.trim() : "";
+    const snippet = extractSnippet(parsed.body);
+    items.push(
+      Object.assign(
         { pagePath: page.relativePath, title: page.title, kind: page.kind },
         page.id ? { id: page.id } : {},
-        normalizeTimestamp(page.updatedAt) ? { updatedAt: normalizeTimestamp(page.updatedAt) } : {},
-        typeof page.sourceType === `string` && page.sourceType.trim().length > 0
-          ? { sourceType: page.sourceType.trim() }
-          : {},
+        updatedAt ? { updatedAt } : {},
+        sourceType ? { sourceType } : {},
         {
-          claimCount: page.claims.length,
-          questionCount: page.questions.length,
-          contradictionCount: page.contradictions.length,
+          claimCount,
+          questionCount,
+          contradictionCount,
           claims: page.claims.map((claim) => claim.text).slice(0, 3),
           questions: page.questions.slice(0, 3),
           contradictions: page.contradictions.slice(0, 3),
         },
-        extractSnippet(parsed.body) ? { snippet: extractSnippet(parsed.body) } : {},
-      ) satisfies MemoryWikiPalaceItem;
-    })
-    .filter(
-      (item) =>
-        PRIMARY_PALACE_KINDS.has(item.kind) ||
-        item.claimCount > 0 ||
-        item.questionCount > 0 ||
-        item.contradictionCount > 0,
-    )
-    .toSorted(comparePalaceItems);
+        snippet ? { snippet } : {},
+      ) satisfies MemoryWikiPalaceItem,
+    );
+  }
 
-  const clusters = PALACE_KIND_ORDER.map((kind) => {
-    const clusterItems = items.filter((item) => item.kind === kind);
-    if (clusterItems.length === 0) {
-      return null;
+  items.sort(comparePalaceItems);
+
+  const itemsByKind = new Map<WikiPageKind, MemoryWikiPalaceItem[]>();
+  for (const item of items) {
+    const clusterItems = itemsByKind.get(item.kind);
+    if (clusterItems) {
+      clusterItems.push(item);
+    } else {
+      itemsByKind.set(item.kind, [item]);
     }
-    return Object.assign(
-      {
-        key: kind,
-        label: PALACE_KIND_LABELS[kind],
-        itemCount: clusterItems.length,
-        claimCount: clusterItems.reduce((sum, item) => sum + item.claimCount, 0),
-        questionCount: clusterItems.reduce((sum, item) => sum + item.questionCount, 0),
-        contradictionCount: clusterItems.reduce((sum, item) => sum + item.contradictionCount, 0),
-      },
-      clusterItems[0]?.updatedAt ? { updatedAt: clusterItems[0].updatedAt } : {},
-      { items: clusterItems },
-    ) satisfies MemoryWikiPalaceCluster;
-  }).filter((entry): entry is MemoryWikiPalaceCluster => entry !== null);
+  }
+
+  const clusters: MemoryWikiPalaceCluster[] = [];
+  for (const kind of PALACE_KIND_ORDER) {
+    const clusterItems = itemsByKind.get(kind);
+    if (!clusterItems?.length) {
+      continue;
+    }
+    let claimCount = 0;
+    let questionCount = 0;
+    let contradictionCount = 0;
+    for (const item of clusterItems) {
+      claimCount += item.claimCount;
+      questionCount += item.questionCount;
+      contradictionCount += item.contradictionCount;
+    }
+    clusters.push(
+      Object.assign(
+        {
+          key: kind,
+          label: PALACE_KIND_LABELS[kind],
+          itemCount: clusterItems.length,
+          claimCount,
+          questionCount,
+          contradictionCount,
+        },
+        clusterItems[0]?.updatedAt ? { updatedAt: clusterItems[0].updatedAt } : {},
+        { items: clusterItems },
+      ) satisfies MemoryWikiPalaceCluster,
+    );
+  }
 
   return {
     totalItems: items.length,
