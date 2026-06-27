@@ -151,6 +151,21 @@ function normalizeScenarioStatus(status: string | undefined): "pass" | "fail" | 
   return status === "pass" || status === "fail" || status === "skip" ? status : "fail";
 }
 
+function countScenarioPassFail(scenarios: readonly { status: string }[]): {
+  passedScenarios: number;
+  failedScenarios: number;
+} {
+  const counts = { passedScenarios: 0, failedScenarios: 0 };
+  for (const scenario of scenarios) {
+    if (scenario.status === "pass") {
+      counts.passedScenarios += 1;
+    } else if (scenario.status === "fail") {
+      counts.failedScenarios += 1;
+    }
+  }
+  return counts;
+}
+
 function scenarioText(scenario: QaParityReportScenario) {
   const parts = [scenario.details ?? ""];
   for (const step of scenario.steps ?? []) {
@@ -195,8 +210,7 @@ export function computeQaAgenticParityMetrics(
     QA_AGENTIC_PARITY_TOOL_BACKED_SCENARIO_TITLES,
   );
   const totalScenarios = scenarios.length;
-  const passedScenarios = scenarios.filter((scenario) => scenario.status === "pass").length;
-  const failedScenarios = scenarios.filter((scenario) => scenario.status === "fail").length;
+  const { passedScenarios, failedScenarios } = countScenarioPassFail(scenarios);
   const unintendedStopCount = scenarios.filter(
     (scenario) =>
       scenario.status !== "pass" && scenarioHasPattern(scenario, UNINTENDED_STOP_PATTERNS),
@@ -695,8 +709,7 @@ export function buildQaRuntimeParityReport(params: {
   });
 
   const totalScenarios = params.summary.counts?.total ?? scenarios.length;
-  const passedScenarios = scenarios.filter((scenario) => scenario.status === "pass").length;
-  const failedScenarios = scenarios.filter((scenario) => scenario.status === "fail").length;
+  const { passedScenarios, failedScenarios } = countScenarioPassFail(scenarios);
   if (scenarios.length === 0 || totalScenarios <= 0) {
     failures.push("Runtime parity report has no executed scenarios.");
   }
