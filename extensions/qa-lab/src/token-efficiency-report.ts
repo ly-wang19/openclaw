@@ -151,6 +151,15 @@ function buildAggregate(rows: readonly TokenEfficiencyRow[]): TokenEfficiencyRep
   const codexTotals = rows.map((row) => row.codex.totalTokens);
   const openclawTotalTokens = openclawTotals.reduce((sum, value) => sum + value, 0);
   const codexTotalTokens = codexTotals.reduce((sum, value) => sum + value, 0);
+  const scenarioLists = { flaggedScenarios: [] as string[], savingsScenarios: [] as string[] };
+  for (const row of rows) {
+    if (row.flagged) {
+      scenarioLists.flaggedScenarios.push(row.scenarioId);
+    }
+    if (row.classification === "savings") {
+      scenarioLists.savingsScenarios.push(row.scenarioId);
+    }
+  }
   return {
     openclaw: {
       totalTokens: openclawTotalTokens,
@@ -163,10 +172,8 @@ function buildAggregate(rows: readonly TokenEfficiencyRow[]): TokenEfficiencyRep
       p90PerScenario: percentile(codexTotals, 90),
     },
     deltaPercent: deltaPercent(openclawTotalTokens, codexTotalTokens),
-    flaggedScenarios: rows.filter((row) => row.flagged).map((row) => row.scenarioId),
-    savingsScenarios: rows
-      .filter((row) => row.classification === "savings")
-      .map((row) => row.scenarioId),
+    flaggedScenarios: scenarioLists.flaggedScenarios,
+    savingsScenarios: scenarioLists.savingsScenarios,
   };
 }
 
