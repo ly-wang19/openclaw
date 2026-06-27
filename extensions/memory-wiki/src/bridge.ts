@@ -284,9 +284,19 @@ export async function syncMemoryWikiBridgeSources(params: {
       })
     : 0;
   await writeMemoryWikiSourceSyncState(params.config.vault.path, state);
-  const importedCount = results.filter((result) => result.changed && result.created).length;
-  const updatedCount = results.filter((result) => result.changed && !result.created).length;
-  const skippedCount = results.filter((result) => !result.changed).length;
+  const { importedCount, updatedCount, skippedCount } = results.reduce(
+    (counts, result) => {
+      if (!result.changed) {
+        counts.skippedCount += 1;
+      } else if (result.created) {
+        counts.importedCount += 1;
+      } else {
+        counts.updatedCount += 1;
+      }
+      return counts;
+    },
+    { importedCount: 0, updatedCount: 0, skippedCount: 0 },
+  );
   const pagePaths = results
     .map((result) => result.pagePath)
     .toSorted((left, right) => left.localeCompare(right));
