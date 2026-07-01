@@ -23,7 +23,13 @@ import {
   resolveBundledProviderCompatPluginIds,
   resolveOwningPluginIdsForProviderRef,
 } from "../../plugins/providers.js";
-import { DEFAULT_CONTEXT_TOKENS, DEFAULT_MODEL_MAX_TOKENS } from "../defaults.js";
+import { DEFAULT_CONTEXT_TOKENS } from "../defaults.js";
+
+// Conservative fallback for the per-request output token cap when model
+// metadata omits it. Mirrors DEFAULT_MODEL_MAX_TOKENS in config/defaults.ts.
+// A context-window-sized value here hands providers a `max_completion_tokens`
+// larger than the model's real output cap, which they reject with HTTP 400.
+const DEFAULT_MODEL_MAX_TOKENS = 8192;
 import { normalizeStaticProviderModelId } from "../model-ref-shared.js";
 import { buildInlineProviderModels } from "./model.inline-provider.js";
 

@@ -21,7 +21,13 @@ import { discoverAuthStorage, discoverModels } from "../agent-model-discovery.js
 import { resolveDefaultAgentDir } from "../agent-scope.js";
 import { ensureAuthProfileStore, resolveAuthProfileOrder } from "../auth-profiles.js";
 import type { AuthProfileCredential } from "../auth-profiles/types.js";
-import { DEFAULT_CONTEXT_TOKENS, DEFAULT_MODEL_MAX_TOKENS } from "../defaults.js";
+import { DEFAULT_CONTEXT_TOKENS } from "../defaults.js";
+
+// Conservative fallback for the per-request output token cap when model
+// metadata omits it. Mirrors DEFAULT_MODEL_MAX_TOKENS in config/defaults.ts.
+// A context-window-sized value here hands providers a `max_completion_tokens`
+// larger than the model's real output cap, which they reject with HTTP 400.
+const DEFAULT_MODEL_MAX_TOKENS = 8192;
 import { resolveAgentHarnessPolicy } from "../harness/policy.js";
 import { resolveModelWorkspaceDir } from "../model-discovery-context.js";
 import { modelKey, normalizeStaticProviderModelId } from "../model-ref-shared.js";
